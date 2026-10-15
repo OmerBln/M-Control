@@ -1,0 +1,8 @@
+# Fevell Z1 Gaming Mouse udev rules for Linux (M-Control)
+# Grants desktop user access (via systemd-logind uaccess) to read/write HID feature reports
+
+# Wired USB connection (Elan Microelectronics Corp. - Fevell Z1)
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04f3", ATTRS{idProduct}=="026e", MODE="0666", TAG+="uaccess"
+
+# 2.4GHz Wireless Dongle connection (HS6209 2.4G Wireless Receiver)
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="32c2", ATTRS{idProduct}=="0018", MODE="0666", TAG+="uaccess"
