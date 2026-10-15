@@ -11,6 +11,7 @@ from mcontrol.core.constants import (
 )
 from mcontrol.core.protocol import (
     calculate_checksum,
+    encode_dpi_color,
     encode_dpi_stage,
     encode_register_2byte,
     verify_checksum,
@@ -58,6 +59,22 @@ class MockHIDDevice:
         for i, dpi in enumerate(default_dpis):
             offset = FlashAddr.DPI_STAGES + (i * 4)
             self.flash[offset : offset + 4] = encode_dpi_stage(dpi)
+
+        # Default DPI colors (Red, Blue, Green, Yellow, Cyan)
+        default_colors = [
+            (255, 0, 0),
+            (0, 0, 255),
+            (0, 255, 0),
+            (255, 255, 0),
+            (0, 255, 255),
+            (255, 0, 255),
+            (255, 255, 255),
+            (255, 255, 255),
+        ]
+        for i, (r, g, b) in enumerate(default_colors):
+            offset = FlashAddr.DPI_COLORS + (i * 4)
+            self.flash[offset : offset + 4] = encode_dpi_color(r, g, b)
+
 
     def open(self, vid: int, pid: int):
         self.is_open = True

@@ -11,6 +11,10 @@ WIRED_PID = 0x026E
 DONGLE_VID = 0x32C2
 DONGLE_PID = 0x0018
 
+# Target USB interfaces for vendor feature communications
+WIRED_INTERFACE = 1
+DONGLE_INTERFACE = 2
+
 # Supported Device Pairs: (VID, PID, mode_name)
 SUPPORTED_DEVICES = [
     (WIRED_VID, WIRED_PID, "wired"),

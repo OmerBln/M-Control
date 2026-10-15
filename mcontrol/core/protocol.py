@@ -35,6 +35,29 @@ class DpiStage:
     color_rgb: Tuple[int, int, int]  # (R, G, B) 0-255
 
 
+@dataclass
+class MouseSettings:
+    """
+    Represents complete configuration state read from or written to the mouse.
+    
+    # Protocol: Fevell Z1 register configuration model (2026-10-15)
+    """
+    polling_rate: int = 1000            # Hz (125, 250, 500, 1000)
+    debounce_ms: int = 4                # ms (1-20)
+    lod: int = 1                        # 1 = 1mm, 2 = 2mm
+    active_stage: int = 0               # 0-indexed active DPI stage
+    stage_count: int = 5                # Number of configured stages (1-8)
+    dpi_stages: Optional[List[int]] = None # List of DPI values per stage
+    motion_sync: bool = True
+    angle_snapping: bool = False
+    ripple_control: bool = False
+
+    def __post_init__(self):
+        if self.dpi_stages is None:
+            self.dpi_stages = [400, 800, 1600, 3200, 6400]
+
+
+
 def calculate_checksum(report_id: int, packet_bytes: bytes) -> int:
     """
     Calculate the protocol checksum byte.
@@ -180,3 +203,34 @@ def decode_dpi_stage(data: bytes, offset: int = 0) -> int:
         return 800  # Fallback safe default DPI
     raw_val = (b0 << 8) | b1
     return max(DPI_MIN, min(DPI_MAX, raw_val * 50))
+
+
+def encode_dpi_color(r: int, g: int, b: int) -> bytes:
+    """
+    Encode an RGB color into a 4-byte record: [r, g, b, checksum].
+    
+    # Protocol: BK3633/Compx DPI LED color record (2026-10-15)
+    """
+    r_val = max(0, min(255, r))
+    g_val = max(0, min(255, g))
+    b_val = max(0, min(255, b))
+    chk = (0x55 - (r_val + g_val + b_val)) & 0xFF
+    return bytes([r_val, g_val, b_val, chk])
+
+
+def decode_dpi_color(data: bytes, offset: int = 0) -> Tuple[int, int, int]:
+    """
+    Decode a 4-byte DPI LED color record into RGB tuple.
+    
+    # Protocol: BK3633/Compx DPI LED color record (2026-10-15)
+    """
+    if len(data) < offset + 4:
+        return (255, 0, 0)
+    r = data[offset]
+    g = data[offset + 1]
+    b = data[offset + 2]
+    expected_chk = (0x55 - (r + g + b)) & 0xFF
+    if data[offset + 3] != expected_chk:
+        return (255, 0, 0)
+    return (r, g, b)
+
