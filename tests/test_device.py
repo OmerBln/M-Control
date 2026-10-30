@@ -198,3 +198,28 @@ def test_chunked_flash_read_write(fevell_device):
 
     read_back = fevell_device.read_flash_register(0x0200, 18)
     assert read_back == data
+
+
+def test_get_hardware_info(fevell_device):
+    info = fevell_device.get_hardware_info()
+    assert info["model_name"] == "Fevell Z1 / Furylevel Z1"
+    assert "PixArt PAW3395" in info["sensor_model"]
+    assert "Beken BK3633" in info["mcu_model"]
+    assert "0x04F3" in info["vendor_id"]
+    assert "0x026E" in info["product_id"]
+    assert "v1.0.1.0" in info["firmware_handshake"]
+    assert "Native Linux HID Driver" in info["driver_version"]
+
+
+def test_set_dpi_configuration(fevell_device):
+    stages = [600, 1200, 1800, 2400, 3600]
+    assert fevell_device.set_dpi_configuration(stages=stages, active_stage=2, stage_count=5) is True
+
+    settings = fevell_device.read_settings()
+    assert settings.active_stage == 2
+    assert settings.stage_count == 5
+    assert settings.dpi_stages[:5] == stages
+
+    with pytest.raises(ValueError):
+        fevell_device.set_dpi_configuration(stages=[20, 800])
+

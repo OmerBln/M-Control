@@ -9,6 +9,7 @@ from mcontrol.core.constants import (
     DONGLE_PID,
     DONGLE_VID,
     WIRED_PID,
+    WIRED_PIDS,
     WIRED_VID,
 )
 
@@ -106,7 +107,7 @@ class DeviceMonitor:
             vid = int(str(vid_str), 16)
             pid = int(str(pid_str), 16)
 
-            if vid == WIRED_VID and pid == WIRED_PID:
+            if vid == WIRED_VID and pid in WIRED_PIDS:
                 return "wired", vid, pid
             elif vid == DONGLE_VID and pid == DONGLE_PID:
                 return "dongle", vid, pid

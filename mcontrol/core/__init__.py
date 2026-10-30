@@ -1,5 +1,9 @@
 """Core hardware communication and protocol drivers."""
 
+from mcontrol.core.base import (
+    BaseMouseDriver,
+    DeviceCapabilities,
+)
 from mcontrol.core.constants import (
     Command,
     FlashAddr,
@@ -13,6 +17,7 @@ from mcontrol.core.device import (
     DeviceError,
     DeviceNotFoundError,
     FevellDevice,
+    discover_mouse,
 )
 from mcontrol.core.monitor import (
     DeviceEvent,
@@ -25,6 +30,8 @@ from mcontrol.core.protocol import (
 )
 
 __all__ = [
+    "BaseMouseDriver",
+    "DeviceCapabilities",
     "Command",
     "FlashAddr",
     "WIRED_VID",
@@ -32,6 +39,7 @@ __all__ = [
     "DONGLE_VID",
     "DONGLE_PID",
     "FevellDevice",
+    "discover_mouse",
     "DeviceError",
     "DeviceNotFoundError",
     "DeviceCommunicationError",

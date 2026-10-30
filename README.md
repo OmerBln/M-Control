@@ -1,40 +1,67 @@
 # M-Control
 
-Native Linux configuration utility, driver, and management software for the **Fevell Z1 (Furylevel Z1)** gaming mouse.
+Linux sistemler için geliştirilmiş; doğrudan donanım düzeyinde iletişim kuran, yerel (native) mouse yapılandırma ve kontrol yazılımı. 
 
-Built specifically for Linux (CachyOS, Arch, Fedora, Debian/Ubuntu) with direct hardware communication over USB HID — **no Wine or Windows emulation required**.
+Wine veya Windows emülasyonuna ihtiyaç duymadan, doğrudan çekirdek HID (`hidraw`) katmanı üzerinden cihazla iki yönlü haberleşir.
 
-## Features
+---
 
-- **Direct Hardware Detection**: Automatically detects Fevell Z1 in both Wired USB (`04f3:026e`) and 2.4GHz Wireless Receiver (`32c2:0018`) modes.
-- **Battery & Link Status**: Live battery percentage, voltage, and charging indicator.
-- **DPI Control**: Independent DPI stages (50 to 26,000 DPI) with custom LED color assignments.
-- **Polling Rate**: Configurable polling rates (125 Hz, 250 Hz, 500 Hz, 1000 Hz).
-- **Sensor Parameters**: Debounce time adjustment, Lift-Off Distance (LOD: 1mm / 2mm), Motion Sync, and Angle Snapping.
-- **Button Mapping & Profiles**: Onboard memory profile saving and persistence.
-- **Native GUI & Tray**: Modern Qt6 (PyQt6) dark-themed interface with KDE Plasma / Wayland system tray integration.
-- **CLI Support**: Full-featured command-line interface for scripts, headless setups, and game-specific profiles.
+## Desteklenen Donanım Mimarisi
 
-## Hardware Support
+Bu uygulama belirli bir markaya bağımlı olmaksızın, aşağıdaki donanım bileşenleri ve kontrolcü mimarisini temel alan fareleri destekler:
 
-- **Device**: Fevell Z1 / Furylevel Z1 Wireless Gaming Mouse
-- **Sensor**: PixArt PAW3395
-- **MCU**: Beken BK3633 / Compx reference design
-- **Wired VID:PID**: `04F3:026E` (Elan Microelectronics Corp.)
-- **2.4GHz Dongle VID:PID**: `32C2:0018` (HS6209 Receiver)
+- **Optik Sensör:** PixArt PAW3395 (50 – 26.000 DPI, 650 IPS, 50G)
+- **Mikrodenetleyici (MCU) / RF Çözümü:** Beken BK3633 / Compx kablosuz çözümü
+- **İletişim Protokolü:** 32-bayt Feature Report (Report ID `0x06` & `0x05`) ve Asenkron Durum Geri Bildirimi (`0x04`)
+- **Desteklenen USB VID / PID Tanımlayıcıları:**
+  - Kablolu USB Modu: `04F3:026E`, `3554:F58A`
+  - 2.4 GHz Standart Alıcı Modu: `04F3:026F`, `3554:F58B`, `32C2:0018`
+  - 4K / 8K Yüksek Hızlı Kablosuz Alıcı Modu: `04F3:026D`
 
-## Installation & Setup
+---
 
-### 1. udev Rules (Non-Root Hardware Access)
+## Öne Çıkan Özellikler
 
-Copy the provided udev rules to allow non-root users to communicate with the mouse:
+- **Donanım Düzeyinde Doğrudan İletişim:** Özel Windows sürücüsüne veya Wine katmanına gerek kalmadan yerel Linux HID sürücüsü ile çalışır.
+- **Dinamik Bağlantı Algılama:** Kablolu USB, 2.4 GHz kablosuz ve 4K alıcı modları arasında geçiş yapıldığında aktif arayüzü otomatik algılar ve terfi ettirir.
+- **Canlı ve Çift Yönlü Senkronizasyon (Input Report 0x04):** Fare üzerindeki fiziksel DPI tuşuna basıldığında arayüzdeki aktif kademe ve göstergeler anında güncellenir.
+- **Kapsamlı DPI Yönetimi:**
+  - 6 kademeli bağımsız DPI ayarı (50 – 26.000 DPI, 50 DPI adımlarla).
+  - İstenen kademeleri devre dışı bırakabilme / etkinleştirebilme (kademe maskesi).
+  - Her kademe için bağımsız 24-bit RGB gösterge rengi seçimi.
+  - Hızlı profil şablonları (Espor, Varsayılan, Maksimum).
+- **Sensör & Performans İnce Ayarları:**
+  - **Yoklama Hızı (Polling Rate):** 125 Hz, 250 Hz, 500 Hz, 1000 Hz.
+  - **Kalkış Mesafesi (LOD):** 1 mm (Rekabetçi / Düşük) veya 2 mm (Standart).
+  - **Tuş Gecikmesi (Debounce):** 0 – 30 ms hassas gecikme ayarı.
+  - **PAW3395 Sensör Algoritmaları:** Motion Sync, Angle Snapping (Açı Düzeltme) ve Ripple Control (Dalgalanma Önleme).
+- **Güç Yönetimi & Aydınlatma:**
+  - Kablosuz uyku süresi zamanlayıcısı (1 – 30 dakika).
+  - Hareket halinde LED aydınlatmayı otomatik kapatma (pil tasarruf modu).
+  - RGB ışıklandırma modları (Kapalı, Sabit, Nefes Alma, Gökkuşağı) ve 4 kademeli parlaklık ayarı.
+- **Tuş Haritalama:**
+  - 6 adet programlanabilir fiziksel tuş ataması.
+  - Donanım güvenliği: Sol tık fonksiyonunun tamamen kaybolmasını engelleyen kilit koruması.
+- **Çift Arayüz Desteği:**
+  - **Modern Qt6 GUI:** Karanlık tema, gerçek zamanlı teşhis paneli ve anında canlı uygulama seçeneği.
+  - **Gelişmiş CLI:** Komut satırından profil yükleme, durum görüntüleme ve Waybar/Polybar gibi durum çubukları için pil çıktısı (`mcontrol battery`).
+
+---
+
+## Kurulum
+
+### 1. udev Kuralları (Root Yetkisi Olmadan Donanım Erişimi)
+
+Cihaza `sudo` gereksinimi olmadan erişebilmek için udev kuralını sisteme kopyalayın ve kuralları yenileyin:
 
 ```bash
 sudo cp 70-m-control.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-### 2. Environment & Installation
+### 2. Ortam Hazırlığı ve Kurulum
+
+Sanal ortam (venv) oluşturup uygulamayı kurun:
 
 ```bash
 python3 -m venv --system-site-packages .venv
@@ -42,29 +69,56 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-## Usage
+---
 
-### CLI
+## Kullanım
 
-```bash
-mcontrol status
-mcontrol battery
-mcontrol set-dpi 1600
-mcontrol set-rate 1000
-```
+### Grafiksel Arayüz (GUI)
 
-### GUI
+Uygulama arayüzünü başlatmak için:
 
 ```bash
 mcontrol-gui
 ```
 
-## License
+### Komut Satırı Arayüzü (CLI)
 
-MIT License
+Betikler, oyun başlatma komutları veya durum çubukları için:
 
-## Disclaimer
+```bash
+# Donanım ve ayar durumunu tam detaylı listeleme
+mcontrol status
 
-M-Control is an independent, community-driven open-source project and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Furylevel, Fevell, Elan Microelectronics, or any of their subsidiaries.
+# Durum çubuğu (Waybar / Polybar) için pil yüzdesi
+mcontrol battery
+mcontrol battery --raw
 
-All product names, logos, brands, trademarks, and registered trademarks are property of their respective owners. Their use in this software and documentation is strictly for identification and hardware compatibility reference purposes only under nominative fair use.
+# DPI ayarı (aktif kademe veya belirli bir kademe)
+mcontrol set-dpi 1600
+mcontrol set-dpi 800 --stage 1
+
+# Yoklama hızını (Hz) değiştirme
+mcontrol set-rate 1000
+
+# Kalkış mesafesini (LOD) değiştirme (1 veya 2 mm)
+mcontrol set-lod 1
+
+# Tuş gecikmesini (Debounce) ayarlama (0 - 30 ms)
+mcontrol set-debounce 4
+```
+
+---
+
+## Testler
+
+Projenin test paketini çalıştırmak için:
+
+```bash
+pytest -v
+```
+
+---
+
+## Lisans
+
+Bu proje [MIT Lisansı](LICENSE) kapsamında dağıtılmaktadır.
