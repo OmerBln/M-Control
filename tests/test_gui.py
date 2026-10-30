@@ -136,5 +136,93 @@ def test_main_window_emergency_recovery_shortcut(qapp, fevell_device):
     assert "Acil kurtarma" in window.lbl_status.text()
 
 
+def test_main_window_lighting_controls(qapp, fevell_device):
+    window = MainWindow(device=fevell_device)
+    assert hasattr(window, "slider_brightness")
+    assert hasattr(window, "slider_speed")
+    assert hasattr(window, "btn_lighting_color")
+    assert hasattr(window, "chk_lighting_follow_dpi")
+
+    # Mode 0 (Off): controls should be disabled
+    off_idx = window.combo_lighting_mode.findData(0)
+    window.combo_lighting_mode.setCurrentIndex(off_idx)
+    assert not window.slider_brightness.isEnabled()
+    assert not window.slider_speed.isEnabled()
+    assert not window.chk_lighting_follow_dpi.isEnabled()
+    assert not window.btn_lighting_color.isEnabled()
+
+    # Mode 1 (Steady): brightness & color enabled, speed disabled
+    steady_idx = window.combo_lighting_mode.findData(1)
+    window.combo_lighting_mode.setCurrentIndex(steady_idx)
+    assert window.slider_brightness.isEnabled()
+    assert not window.slider_speed.isEnabled()
+    assert window.chk_lighting_follow_dpi.isEnabled()
+
+    # Mode 2 (Breathing): all enabled
+    breath_idx = window.combo_lighting_mode.findData(2)
+    window.combo_lighting_mode.setCurrentIndex(breath_idx)
+    assert window.slider_brightness.isEnabled()
+    assert window.slider_speed.isEnabled()
+    assert window.chk_lighting_follow_dpi.isEnabled()
+
+    # Test brightness slider and label
+    window.slider_brightness.setValue(4)
+    assert "100" in window.lbl_brightness_val.text()
+
+    # Test speed slider and label
+    window.slider_speed.setValue(3)
+    assert "Hızlı" in window.lbl_speed_val.text()
+
+    # Test custom lighting color
+    window._lighting_color = (255, 128, 0)
+    window.chk_lighting_follow_dpi.setChecked(False)
+    assert window.btn_lighting_color.isEnabled()
+    assert "rgb(255, 128, 0)" in window.btn_lighting_color.styleSheet()
+
+
+def test_main_window_battery_charging_display(qapp, fevell_device):
+    window = MainWindow(device=fevell_device)
+
+    # Test charging
+    window._update_battery_display(75, is_charging=True, voltage_mv=4200)
+    assert "⚡" in window.battery_bar.format()
+    assert "Şarj" in window.battery_bar.format()
+    assert window.battery_bar.value() == 75
+    assert "#06b6d4" in window.battery_bar.styleSheet()
+
+    # Test low battery
+    window._update_battery_display(15, is_charging=False, voltage_mv=3500)
+    assert "⚠️" in window.battery_bar.format()
+    assert "Düşük" in window.battery_bar.format()
+    assert "#ef4444" in window.battery_bar.styleSheet()
+
+    # Test normal battery
+    window._update_battery_display(85, is_charging=False, voltage_mv=4100)
+    assert window.battery_bar.format() == "%p%"
+    assert "#10b981" in window.battery_bar.styleSheet()
+
+
+def test_main_window_reset_buttons_to_default(qapp, fevell_device):
+    window = MainWindow(device=fevell_device)
+
+    # Change buttons 3 and 4 to non-defaults
+    vol_up_idx = window.button_combos[3].findData("multimedia_vol_up")
+    window.button_combos[3].setCurrentIndex(vol_up_idx)
+    vol_down_idx = window.button_combos[4].findData("multimedia_vol_down")
+    window.button_combos[4].setCurrentIndex(vol_down_idx)
+
+    assert window.button_combos[3].currentData() == "multimedia_vol_up"
+    assert window.button_combos[4].currentData() == "multimedia_vol_down"
+
+    # Click reset to default
+    window._reset_button_mappings_to_default()
+
+    from mcontrol.core.constants import DEFAULT_BUTTON_KEYS
+    for idx, combo in enumerate(window.button_combos):
+        assert combo.currentData() == DEFAULT_BUTTON_KEYS[idx]
+    assert "varsayılan" in window.lbl_status.text()
+
+
+
 
 

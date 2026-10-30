@@ -344,10 +344,12 @@ class MainWindow(QMainWindow):
 
         self._assets_dir = assets_dir
         self._stage_colors: List[Tuple[int, int, int]] = list(DEFAULT_DPI_STAGE_COLORS[:MAX_DPI_STAGES])
+        self._lighting_color: Tuple[int, int, int] = (0, 255, 0)
         self._buttons_dirty = False
         self._lighting_dirty = False
         self._colors_dirty = False
         self._last_applied_buttons: List[str] = list(DEFAULT_BUTTON_KEYS)
+        self._auto_reconnect_counter = 0
 
         self._dpi_commit_timer = QTimer(self)
         self._dpi_commit_timer.setSingleShot(True)
@@ -568,6 +570,14 @@ class MainWindow(QMainWindow):
 
         btn_grid.setColumnStretch(1, 1)
         left_layout.addLayout(btn_grid)
+
+        self.btn_reset_keys = QPushButton("Tuşları Varsayılana Sıfırla")
+        self.btn_reset_keys.setObjectName("SecondaryBtn")
+        self.btn_reset_keys.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_reset_keys.setToolTip("6 adet fare tuşunu varsayılan fabrika atamalarına geri döndürür.")
+        self.btn_reset_keys.clicked.connect(self._reset_button_mappings_to_default)
+        left_layout.addWidget(self.btn_reset_keys)
+
         left_layout.addStretch()
 
         root_layout.addWidget(left_card)
@@ -862,16 +872,69 @@ class MainWindow(QMainWindow):
         power_layout.addLayout(row_light)
 
         # Brightness slider
-        row_bright = QHBoxLayout()
+        row_bright_hdr = QHBoxLayout()
         lbl_bright = QLabel("LED Parlaklık Seviyesi:")
         lbl_bright.setStyleSheet("color: #cbd5e1; font-weight: 600;")
+        self.lbl_brightness_val = QLabel("Seviye 3 (%75)")
+        self.lbl_brightness_val.setStyleSheet("color: #38bdf8; font-weight: 700; font-size: 13px;")
+        row_bright_hdr.addWidget(lbl_bright)
+        row_bright_hdr.addStretch()
+        row_bright_hdr.addWidget(self.lbl_brightness_val)
+        power_layout.addLayout(row_bright_hdr)
+
         self.slider_brightness = QSlider(Qt.Orientation.Horizontal)
         self.slider_brightness.setRange(1, 4)
         self.slider_brightness.setValue(3)
+        self.slider_brightness.valueChanged.connect(self._on_brightness_slider_changed)
         self.slider_brightness.sliderReleased.connect(self._on_lighting_changed)
-        row_bright.addWidget(lbl_bright)
-        row_bright.addWidget(self.slider_brightness, stretch=1)
-        power_layout.addLayout(row_bright)
+        power_layout.addWidget(self.slider_brightness)
+
+        # Speed slider (GamingMS.exe LED animation speed 1..4)
+        row_speed_hdr = QHBoxLayout()
+        lbl_speed = QLabel("Efekt Hızı (LED Hızı):")
+        lbl_speed.setStyleSheet("color: #cbd5e1; font-weight: 600;")
+        self.lbl_speed_val = QLabel("2 (Normal)")
+        self.lbl_speed_val.setStyleSheet("color: #38bdf8; font-weight: 700; font-size: 13px;")
+        row_speed_hdr.addWidget(lbl_speed)
+        row_speed_hdr.addStretch()
+        row_speed_hdr.addWidget(self.lbl_speed_val)
+        power_layout.addLayout(row_speed_hdr)
+
+        self.slider_speed = QSlider(Qt.Orientation.Horizontal)
+        self.slider_speed.setRange(1, 4)
+        self.slider_speed.setValue(2)
+        self.slider_speed.valueChanged.connect(self._on_speed_slider_changed)
+        self.slider_speed.sliderReleased.connect(self._on_lighting_changed)
+        power_layout.addWidget(self.slider_speed)
+
+        # Lighting Color Row
+        row_color = QHBoxLayout()
+        lbl_color = QLabel("Aydınlatma Rengi:")
+        lbl_color.setStyleSheet("color: #cbd5e1; font-weight: 600;")
+        self.btn_lighting_color = QPushButton()
+        self.btn_lighting_color.setFixedSize(24, 24)
+        self.btn_lighting_color.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_lighting_color.setToolTip("Özel aydınlatma rengini seçin")
+        self.btn_lighting_color.setStyleSheet(
+            "background-color: rgb(0, 255, 0); "
+            "border: 2px solid #cbd5e1; border-radius: 12px; padding: 0px;"
+        )
+        self.btn_lighting_color.clicked.connect(self._choose_lighting_color)
+
+        self.chk_lighting_follow_dpi = QCheckBox("Aktif DPI rengini takip et")
+        self.chk_lighting_follow_dpi.setChecked(True)
+        self.chk_lighting_follow_dpi.setToolTip(
+            "İşaretlendiğinde fare RGB aydınlatması seçili DPI kademesinin rengini alır."
+        )
+        self.chk_lighting_follow_dpi.toggled.connect(self._on_lighting_follow_dpi_toggled)
+
+        row_color.addWidget(lbl_color)
+        row_color.addSpacing(8)
+        row_color.addWidget(self.btn_lighting_color)
+        row_color.addSpacing(14)
+        row_color.addWidget(self.chk_lighting_follow_dpi)
+        row_color.addStretch()
+        power_layout.addLayout(row_color)
 
         power_layout.addStretch()
 
@@ -1033,6 +1096,9 @@ class MainWindow(QMainWindow):
         finally:
             self._syncing_ui = False
 
+        if self.chk_live_apply.isChecked() and self.device.is_connected:
+            self._dpi_commit_timer.start(250)
+
     def _on_stage_radio_toggled(self, stage_idx: int, checked: bool) -> None:
         if not checked:
             return
@@ -1047,11 +1113,15 @@ class MainWindow(QMainWindow):
             self.spin_dpi.setValue(self.stage_spinboxes[stage_idx].value())
             self._update_stage_row_styles()
             self._update_active_dpi_banner()
+            if hasattr(self, "chk_lighting_follow_dpi") and self.chk_lighting_follow_dpi.isChecked():
+                self._update_lighting_controls_state()
         finally:
             self._syncing_ui = was_syncing
 
         if not self._syncing_ui and self.chk_live_apply.isChecked() and self.device.is_connected:
             self._push_dpi_to_hardware()
+            if hasattr(self, "chk_lighting_follow_dpi") and self.chk_lighting_follow_dpi.isChecked():
+                self._on_lighting_changed()
 
     def _on_stage_enable_toggled(self, stage_idx: int, checked: bool) -> None:
         if self._syncing_ui:
@@ -1086,6 +1156,15 @@ class MainWindow(QMainWindow):
             f"background-color: rgb({new_rgb[0]}, {new_rgb[1]}, {new_rgb[2]}); "
             "border: 2px solid #cbd5e1; border-radius: 11px; padding: 0px;"
         )
+        if (
+            stage_idx == self.get_selected_stage_index()
+            and hasattr(self, "chk_lighting_follow_dpi")
+            and self.chk_lighting_follow_dpi.isChecked()
+        ):
+            self._update_lighting_controls_state()
+            if self.chk_live_apply.isChecked() and self.device.is_connected:
+                self._on_lighting_changed()
+
         if self.chk_live_apply.isChecked() and self.device.is_connected:
             try:
                 self.device.set_dpi_color(stage_idx, new_rgb[0], new_rgb[1], new_rgb[2])
@@ -1193,25 +1272,162 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
+    def _on_brightness_slider_changed(self, value: int) -> None:
+        pct = value * 25
+        self.lbl_brightness_val.setText(f"Seviye {value} (%{pct})")
+        if self._syncing_ui:
+            return
+        if not self.slider_brightness.isSliderDown() and self.chk_live_apply.isChecked():
+            self._on_lighting_changed()
+
+    def _on_speed_slider_changed(self, value: int) -> None:
+        speed_names = {1: "1 (Yavaş)", 2: "2 (Normal)", 3: "3 (Hızlı)", 4: "4 (Çok Hızlı)"}
+        self.lbl_speed_val.setText(speed_names.get(value, str(value)))
+        if self._syncing_ui:
+            return
+        if not self.slider_speed.isSliderDown() and self.chk_live_apply.isChecked():
+            self._on_lighting_changed()
+
+    def _choose_lighting_color(self) -> None:
+        r, g, b = self._lighting_color
+        chosen = QColorDialog.getColor(
+            QColor(r, g, b),
+            self,
+            "Aydınlatma RGB Rengini Seçin",
+        )
+        if not chosen.isValid():
+            return
+        self._lighting_color = (chosen.red(), chosen.green(), chosen.blue())
+        self._syncing_ui = True
+        try:
+            self.chk_lighting_follow_dpi.setChecked(False)
+        finally:
+            self._syncing_ui = False
+        self._update_lighting_controls_state()
+        self._on_lighting_changed()
+
+    def _on_lighting_follow_dpi_toggled(self, _checked: bool) -> None:
+        self._update_lighting_controls_state()
+        if not self._syncing_ui:
+            self._on_lighting_changed()
+
+    def _update_lighting_controls_state(self) -> None:
+        mode = int(self.combo_lighting_mode.currentData() or 0)
+        is_off = (mode == 0)
+        is_steady = (mode == 1)
+        is_rainbow = (mode == 3)
+
+        self.slider_brightness.setEnabled(not is_off)
+        self.slider_speed.setEnabled(not is_off and not is_steady)
+        self.chk_lighting_follow_dpi.setEnabled(not is_off and not is_rainbow)
+        self.btn_lighting_color.setEnabled(
+            not is_off and not is_rainbow and not self.chk_lighting_follow_dpi.isChecked()
+        )
+
+        if self.chk_lighting_follow_dpi.isChecked():
+            active_idx = self.get_selected_stage_index()
+            r, g, b = self._stage_colors[active_idx]
+        else:
+            r, g, b = self._lighting_color
+
+        self.btn_lighting_color.setStyleSheet(
+            f"background-color: rgb({r}, {g}, {b}); "
+            "border: 2px solid #cbd5e1; border-radius: 12px; padding: 0px;"
+        )
+
     def _on_lighting_changed(self, *_args) -> None:
         if self._syncing_ui:
             return
+        self._update_lighting_controls_state()
         self._lighting_dirty = True
         if self.chk_live_apply.isChecked() and self.device.is_connected:
             try:
                 light_mode = int(self.combo_lighting_mode.currentData() or 0)
                 light_bright = self.slider_brightness.value()
-                active_idx = self.get_selected_stage_index()
+                light_speed = self.slider_speed.value()
+                if self.chk_lighting_follow_dpi.isChecked():
+                    active_idx = self.get_selected_stage_index()
+                    color = self._stage_colors[active_idx]
+                else:
+                    color = self._lighting_color
+
                 self.device.set_lighting(
                     mode=light_mode,
                     brightness=light_bright,
-                    speed=2,
-                    color=self._stage_colors[active_idx],
+                    speed=light_speed,
+                    color=color,
                 )
                 self._lighting_dirty = False
                 self.lbl_status.setText("RGB aydınlatma efekti güncellendi.")
             except Exception:
                 pass
+
+    def _reset_button_mappings_to_default(self) -> None:
+        self._syncing_ui = True
+        try:
+            for idx, combo in enumerate(self.button_combos):
+                default_key = DEFAULT_BUTTON_KEYS[idx]
+                c_idx = combo.findData(default_key)
+                if c_idx >= 0:
+                    combo.setCurrentIndex(c_idx)
+        finally:
+            self._syncing_ui = False
+
+        self._buttons_dirty = True
+        self.lbl_status.setText("Tuş atamaları varsayılan düzene getirildi.")
+        if self.chk_live_apply.isChecked() and self.device.is_connected:
+            try:
+                self.device.set_button_mappings(list(DEFAULT_BUTTON_KEYS))
+                self._last_applied_buttons = list(DEFAULT_BUTTON_KEYS)
+                self._buttons_dirty = False
+            except Exception:
+                pass
+
+    def _update_battery_display(
+        self,
+        percentage: int,
+        is_charging: bool = False,
+        voltage_mv: Optional[int] = None,
+    ) -> None:
+        clamped_pct = max(0, min(100, percentage))
+        self.battery_bar.setValue(clamped_pct)
+
+        if is_charging:
+            self.battery_bar.setFormat("⚡ %p% (Şarj)")
+            self.battery_bar.setStyleSheet(
+                "QProgressBar { border: 1px solid #0891b2; border-radius: 6px; background-color: #111420; "
+                "text-align: center; color: #ffffff; font-weight: 700; font-size: 11px; } "
+                "QProgressBar::chunk { background-color: #06b6d4; border-radius: 5px; }"
+            )
+            tip = f"Pil Durumu: %{clamped_pct} (Şarj Oluyor / USB Gücü)"
+        elif clamped_pct <= 20:
+            self.battery_bar.setFormat("⚠️ %p% (Düşük)")
+            self.battery_bar.setStyleSheet(
+                "QProgressBar { border: 1px solid #991b1b; border-radius: 6px; background-color: #111420; "
+                "text-align: center; color: #ffffff; font-weight: 700; font-size: 11px; } "
+                "QProgressBar::chunk { background-color: #ef4444; border-radius: 5px; }"
+            )
+            tip = f"Pil Durumu: %{clamped_pct} (Düşük Pil - Lütfen Şarj Edin)"
+        elif clamped_pct <= 50:
+            self.battery_bar.setFormat("%p%")
+            self.battery_bar.setStyleSheet(
+                "QProgressBar { border: 1px solid #854d0e; border-radius: 6px; background-color: #111420; "
+                "text-align: center; color: #ffffff; font-weight: 700; font-size: 11px; } "
+                "QProgressBar::chunk { background-color: #eab308; border-radius: 5px; }"
+            )
+            tip = f"Pil Durumu: %{clamped_pct}"
+        else:
+            self.battery_bar.setFormat("%p%")
+            self.battery_bar.setStyleSheet(
+                "QProgressBar { border: 1px solid #2e3650; border-radius: 6px; background-color: #111420; "
+                "text-align: center; color: #ffffff; font-weight: 700; font-size: 11px; } "
+                "QProgressBar::chunk { background-color: #10b981; border-radius: 5px; }"
+            )
+            tip = f"Pil Durumu: %{clamped_pct}"
+
+        if voltage_mv:
+            tip += f" (~{voltage_mv} mV)"
+        self.battery_bar.setToolTip(tip)
 
     def _on_button_mapping_changed(self, btn_idx: int) -> None:
         if self._syncing_ui:
@@ -1314,10 +1530,22 @@ class MainWindow(QMainWindow):
     def _poll_live_hardware_events(self) -> None:
         """
         Poll Input Report 0x04 from the mouse every 200ms so physical DPI button presses
-        immediately update the active DPI stage in the GUI.
+        immediately update the active DPI stage in the GUI. Also handles automatic hotplug
+        reconnection when the mouse is reconnected.
         """
         if not self.device.is_connected:
+            self._auto_reconnect_counter += 1
+            if self._auto_reconnect_counter >= 10:  # Every 2.0s
+                self._auto_reconnect_counter = 0
+                try:
+                    self.device.connect()
+                    self.refresh_device_state()
+                    self.lbl_status.setText("Fare algılandı ve otomatik olarak bağlandı.")
+                except Exception:
+                    pass
             return
+
+        self._auto_reconnect_counter = 0
         try:
             update = self.device.poll_input_report()
         except Exception:
@@ -1347,11 +1575,14 @@ class MainWindow(QMainWindow):
                 self.combo_lod.setCurrentIndex(lod_idx)
 
             if "battery_pct" in update:
-                self.battery_bar.setValue(update["battery_pct"])
+                is_chg = bool(update.get("is_charging", 0))
+                self._update_battery_display(update["battery_pct"], is_charging=is_chg)
         finally:
             self._syncing_ui = False
 
         if new_stage != prev_stage:
+            if hasattr(self, "chk_lighting_follow_dpi") and self.chk_lighting_follow_dpi.isChecked():
+                self._update_lighting_controls_state()
             active_dpi = self.stage_spinboxes[self.get_selected_stage_index()].value()
             self.lbl_status.setText(
                 f"Fare üzerinden DPI değiştirildi: {new_stage + 1}. Kademe ({active_dpi} DPI)"
@@ -1369,8 +1600,7 @@ class MainWindow(QMainWindow):
             self.lbl_conn_mode.setStyleSheet("color: #34d399; font-size: 12px; font-weight: 700;")
 
             bat = self.device.read_battery()
-            self.battery_bar.setValue(bat.percentage)
-            self.battery_bar.setToolTip(str(bat))
+            self._update_battery_display(bat.percentage, is_charging=bat.is_charging, voltage_mv=bat.voltage_mv)
 
             settings = self.device.read_settings()
             self._syncing_ui = True
@@ -1422,6 +1652,13 @@ class MainWindow(QMainWindow):
                 if light_idx >= 0:
                     self.combo_lighting_mode.setCurrentIndex(light_idx)
                 self.slider_brightness.setValue(settings.lighting_brightness)
+                self.slider_speed.setValue(settings.lighting_speed)
+                self.lbl_brightness_val.setText(
+                    f"Seviye {settings.lighting_brightness} (%{settings.lighting_brightness * 25})"
+                )
+                speed_names = {1: "1 (Yavaş)", 2: "2 (Normal)", 3: "3 (Hızlı)", 4: "4 (Çok Hızlı)"}
+                self.lbl_speed_val.setText(speed_names.get(settings.lighting_speed, str(settings.lighting_speed)))
+                self._update_lighting_controls_state()
 
                 if settings.button_mappings:
                     for i, key_name in enumerate(settings.button_mappings[:6]):
@@ -1442,7 +1679,7 @@ class MainWindow(QMainWindow):
         except DeviceError as exc:
             self.lbl_conn_mode.setText("Bağlı Değil")
             self.lbl_conn_mode.setStyleSheet("color: #f87171; font-size: 12px; font-weight: 700;")
-            self.battery_bar.setValue(0)
+            self._update_battery_display(0, is_charging=False)
             self.lbl_status.setText(str(exc))
 
     def _refresh_diagnostics_labels(self, bat_override=None, settings_override=None) -> None:
@@ -1476,8 +1713,7 @@ class MainWindow(QMainWindow):
             return
         try:
             bat = self.device.read_battery()
-            self.battery_bar.setValue(bat.percentage)
-            self.battery_bar.setToolTip(str(bat))
+            self._update_battery_display(bat.percentage, is_charging=bat.is_charging, voltage_mv=bat.voltage_mv)
             if "live_battery" in self.hw_labels:
                 charge_txt = "Şarj Oluyor / USB Gücü" if bat.is_charging else "Pil ile Çalışıyor"
                 self.hw_labels["live_battery"].setText(
@@ -1506,6 +1742,12 @@ class MainWindow(QMainWindow):
             move_light_off = self.chk_move_light_off.isChecked()
             light_mode = int(self.combo_lighting_mode.currentData() or 0)
             light_bright = self.slider_brightness.value()
+            light_speed = self.slider_speed.value()
+            if hasattr(self, "chk_lighting_follow_dpi") and self.chk_lighting_follow_dpi.isChecked():
+                light_color = self._stage_colors[active_idx]
+            else:
+                light_color = self._lighting_color
+
             button_keys = [str(c.currentData() or DEFAULT_BUTTON_KEYS[i]) for i, c in enumerate(self.button_combos)]
             if "left_click" not in button_keys:
                 button_keys[0] = "left_click"
@@ -1530,14 +1772,13 @@ class MainWindow(QMainWindow):
                 sleep_timeout_min=sleep_min,
                 move_light_off=move_light_off,
             )
-            if self._lighting_dirty:
-                self.device.set_lighting(
-                    mode=light_mode,
-                    brightness=light_bright,
-                    speed=2,
-                    color=self._stage_colors[active_idx],
-                )
-                self._lighting_dirty = False
+            self.device.set_lighting(
+                mode=light_mode,
+                brightness=light_bright,
+                speed=light_speed,
+                color=light_color,
+            )
+            self._lighting_dirty = False
 
             if self._buttons_dirty or button_keys != self._last_applied_buttons:
                 self.device.set_button_mappings(button_keys)
