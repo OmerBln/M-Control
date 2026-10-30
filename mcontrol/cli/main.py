@@ -141,6 +141,31 @@ def cmd_set_debounce(dev: BaseMouseDriver, args):
         sys.exit(1)
 
 
+def cmd_reset(dev: BaseMouseDriver, args):
+    """
+    Emergency recovery and factory reset command.
+    Restores mouse hardware to factory default settings without requiring mouse clicks.
+    
+    # Protocol: GamingMS.exe Feature Report 0x06 Cmd 0x0F & Default Mapping (2026-10-30)
+    """
+    if not args.force:
+        print("Uyarı: Bu işlem farenin tüm tuş, DPI ve sensör ayarlarını fabrika varsayılanlarına döndürür.", file=sys.stderr)
+        print("Onaylamak için '--force' bayrağını kullanın: mcontrol reset --force", file=sys.stderr)
+        sys.exit(1)
+
+    print("Kurtarma işlemi başlatılıyor: Donanım fabrika ayarlarına sıfırlanıyor...")
+    try:
+        if dev.factory_reset():
+            print("Başarılı: Fare donanımı ve tuş atamaları fabrika ayarlarına döndürüldü.")
+            print("Tuşlar (Sol Tık, Sağ Tık, vb.) ve sensör varsayılan durumuna geri getirildi.")
+        else:
+            print("Hata: Fabrika ayarlarına sıfırlama başarısız oldu.", file=sys.stderr)
+            sys.exit(1)
+    except Exception as e:
+        print(f"Hata: Sıfırlama sırasında istisna oluştu ({e})", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     """Main CLI entrypoint."""
     parser = argparse.ArgumentParser(
@@ -183,6 +208,11 @@ def main():
     p_deb = subparsers.add_parser("set-debounce", help="Tıklama gecikmesini (Debounce) ayarlar")
     p_deb.add_argument("ms", type=int, help=f"Milisaniye ({DEBOUNCE_MIN_MS} - {DEBOUNCE_MAX_MS})")
     p_deb.set_defaults(func=cmd_set_debounce)
+
+    # reset (emergency recovery)
+    p_reset = subparsers.add_parser("reset", help="Acil durum kurtarma: Fareyi klavyeden fabrika ayarlarına döndürür")
+    p_reset.add_argument("--force", action="store_true", help="Onay sormadan sıfırlamayı gerçekleştirir")
+    p_reset.set_defaults(func=cmd_reset)
 
     args = parser.parse_args()
     if not args.command:

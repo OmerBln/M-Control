@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -366,6 +366,12 @@ class MainWindow(QMainWindow):
         self.telemetry_timer = QTimer(self)
         self.telemetry_timer.timeout.connect(self.update_battery_only)
         self.telemetry_timer.start(15000)
+
+        # Keyboard emergency recovery shortcut (Ctrl+Shift+R)
+        self.recovery_action = QAction(self)
+        self.recovery_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
+        self.recovery_action.triggered.connect(self._on_emergency_recovery_shortcut)
+        self.addAction(self.recovery_action)
 
     def _init_ui(self) -> None:
         central = QWidget()
@@ -1573,6 +1579,24 @@ class MainWindow(QMainWindow):
             self.lbl_status.setText("Fare fabrika ayarlarına sıfırlandı.")
         except Exception as exc:
             QMessageBox.critical(self, "Sıfırlama Hatası", str(exc))
+
+    def _on_emergency_recovery_shortcut(self) -> None:
+        """
+        Emergency recovery handler triggered by Ctrl+Shift+R keyboard shortcut.
+        Restores mouse hardware without requiring any mouse clicks.
+        """
+        try:
+            self.device.factory_reset()
+            self.refresh_device_state()
+            self.lbl_status.setText("Acil kurtarma: Fare fabrika ayarlarına sıfırlandı (Ctrl+Shift+R).")
+            QMessageBox.information(
+                self,
+                "Acil Kurtarma Başarılı",
+                "Klavye kısayolu (Ctrl+Shift+R) ile fare başarıyla fabrika ayarlarına sıfırlandı.\n"
+                "Tuş atamaları ve sensör varsayılan durumuna getirildi.",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Kurtarma Hatası", f"Sıfırlama yapılamadı: {exc}")
 
     def test_hardware_communication(self) -> None:
         """Verify live bidirectional feature report exchange with the mouse."""

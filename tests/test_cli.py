@@ -9,6 +9,7 @@ from mcontrol.cli.main import (
     cmd_set_rate,
     cmd_set_lod,
     cmd_set_debounce,
+    cmd_reset,
 )
 from mcontrol.core.protocol import BatteryStatus, MouseSettings
 
@@ -70,4 +71,25 @@ def test_cli_cmd_set_debounce(fevell_device, capsys):
     assert "Başarılı" in captured.out
     assert "8 ms" in captured.out
     assert fevell_device.get_debounce() == 8
+
+
+def test_cli_cmd_reset_requires_force(fevell_device, capsys):
+    args = MagicMock(force=False)
+    with pytest.raises(SystemExit):
+        cmd_reset(fevell_device, args)
+    captured = capsys.readouterr()
+    assert "--force" in captured.err
+
+
+def test_cli_cmd_reset_success(fevell_device, capsys):
+    # Alter settings first
+    fevell_device.set_polling_rate(500)
+    args = MagicMock(force=True)
+    cmd_reset(fevell_device, args)
+    captured = capsys.readouterr()
+    assert "Başarılı" in captured.out
+    assert "fabrika ayarlarına" in captured.out
+    # Must restore 1000 Hz default
+    assert fevell_device.get_polling_rate() == 1000
+
 

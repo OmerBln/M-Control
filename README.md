@@ -20,6 +20,30 @@ Bu uygulama belirli bir markaya bağımlı olmaksızın, aşağıdaki donanım b
 
 ---
 
+## Donanım Güvenliği & Test Mimarisi
+
+Donanımla doğrudan USB HID seviyesinde bayt dizileri üzerinden haberleşen yazılımlarda hatalı bir bayt cihazın kilitlenmesine (brick) veya tuşların yanıt vermemesine yol açabilir. M-Control, bu riskleri ortadan kaldırmak için çok katmanlı güvenlik mekanizmalarına sahiptir:
+
+### 1. Sanal Cihaz Doğrulaması (`MockHIDDevice`)
+Tüm komut paketleri, sağlama toplamları (checksum) ve durum ayrıştırıcıları önce bellekte çalışan sanal bir donanım üzerinde simüle edilir. Fiziksel donanıma doğrulanmamış hiçbir paket iletilmez.
+
+### 2. Sol Tık Koruma Kilidi (Left-Click Lock Guard)
+Kullanıcının tuş atamaları sırasında tüm butonları yanlışlıkla başka fonksiyonlara atayıp fareyi tıklamasız bırakmasını engellemek için, tuş haritasında daima en az bir adet `Sol Tık` (Left Click) fonksiyonunun bulunması zorunlu kılınmıştır.
+
+### 3. Akıllı Değişiklik Takibi ("Dirty Buffer" Yönetimi)
+Her kaydetme işleminde farenin tüm Flash belleği körlemesine yeniden yazılmaz. Yalnızca kullanıcının gerçekten değiştirdiği alt sistem paketleri (DPI, LOD, tuş veya aydınlatma) gönderilerek donanım yıpranması ve kilitlenmeler önlenir.
+
+### 4. Acil Durum Fabrika Ayarlarına Sıfırlama (Klavye ile Kurtarma)
+Olası bir kilitlenmede veya farenin tıklamayı reddettiği olağanüstü durumlarda, fareye hiç dokunmadan cihazı fabrika ayarlarına döndürebilirsiniz:
+- **Terminalden (CLI):**
+  ```bash
+  mcontrol reset --force
+  ```
+- **Grafik Arayüz Açıkken (GUI):**
+  Klavyeden `Ctrl + Shift + R` kısayoluna basarak acil durum sıfırlamasını tetikleyebilirsiniz.
+
+---
+
 ## Öne Çıkan Özellikler
 
 - **Donanım Düzeyinde Doğrudan İletişim:** Özel Windows sürücüsüne veya Wine katmanına gerek kalmadan yerel Linux HID sürücüsü ile çalışır.
@@ -41,10 +65,10 @@ Bu uygulama belirli bir markaya bağımlı olmaksızın, aşağıdaki donanım b
   - RGB ışıklandırma modları (Kapalı, Sabit, Nefes Alma, Gökkuşağı) ve 4 kademeli parlaklık ayarı.
 - **Tuş Haritalama:**
   - 6 adet programlanabilir fiziksel tuş ataması.
-  - Donanım güvenliği: Sol tık fonksiyonunun tamamen kaybolmasını engelleyen kilit koruması.
+  - Donanım güvenliği: Sol tık koruma kilidi.
 - **Çift Arayüz Desteği:**
-  - **Modern Qt6 GUI:** Karanlık tema, gerçek zamanlı teşhis paneli ve anında canlı uygulama seçeneği.
-  - **Gelişmiş CLI:** Komut satırından profil yükleme, durum görüntüleme ve Waybar/Polybar gibi durum çubukları için pil çıktısı (`mcontrol battery`).
+  - **Modern Qt6 GUI:** Karanlık tema, gerçek zamanlı teşhis paneli, acil kurtarma kısayolu (`Ctrl+Shift+R`) ve anında canlı uygulama seçeneği.
+  - **Gelişmiş CLI:** Komut satırından ayar değiştirme, acil kurtarma (`mcontrol reset --force`) ve Waybar/Polybar durum çubukları için pil telemetrisi (`mcontrol battery`).
 
 ---
 
@@ -80,6 +104,7 @@ Uygulama arayüzünü başlatmak için:
 ```bash
 mcontrol-gui
 ```
+*(Fare yanıt vermezse arayüz açıkken klavyeden `Ctrl + Shift + R` ile fabrika ayarlarına sıfırlayabilirsiniz.)*
 
 ### Komut Satırı Arayüzü (CLI)
 
@@ -105,6 +130,9 @@ mcontrol set-lod 1
 
 # Tuş gecikmesini (Debounce) ayarlama (0 - 30 ms)
 mcontrol set-debounce 4
+
+# Acil Kurtarma: Fare tıklamıyorsa fareye dokunmadan fabrika ayarlarına sıfırlama
+mcontrol reset --force
 ```
 
 ---

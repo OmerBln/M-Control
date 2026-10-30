@@ -126,4 +126,15 @@ def test_main_window_left_click_safety_guard(qapp, fevell_device):
     assert "Sol Tık" in window.lbl_status.text()
 
 
+def test_main_window_emergency_recovery_shortcut(qapp, fevell_device):
+    window = MainWindow(device=fevell_device)
+    from PyQt6 import QtWidgets
+    QtWidgets.QMessageBox.information = lambda *args, **kwargs: None
+    fevell_device.set_polling_rate(500)
+    window._on_emergency_recovery_shortcut()
+    assert fevell_device.get_polling_rate() == 1000
+    assert "Acil kurtarma" in window.lbl_status.text()
+
+
+
 
