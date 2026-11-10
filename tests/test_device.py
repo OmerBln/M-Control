@@ -223,3 +223,49 @@ def test_set_dpi_configuration(fevell_device):
     with pytest.raises(ValueError):
         fevell_device.set_dpi_configuration(stages=[20, 800])
 
+
+def test_lighting_persistence_and_profile(tmp_path, mock_device):
+    profile_file = tmp_path / "test_profile.json"
+    dev = FevellDevice(profile_path=profile_file)
+    dev.connect(hid_device=mock_device, mode="wired")
+
+    # Set lighting with custom color and follow_dpi=False
+    dev.set_lighting(mode=2, brightness=4, speed=3, color=(255, 128, 0), follow_dpi=False)
+    assert profile_file.exists()
+
+    # Create new instance pointing to same profile
+    dev2 = FevellDevice(profile_path=profile_file)
+    dev2.connect(hid_device=mock_device, mode="wired")
+    settings = dev2.read_settings()
+    assert settings.lighting_mode == 2
+    assert settings.lighting_brightness == 4
+    assert settings.lighting_speed == 3
+    assert settings.lighting_color == (255, 128, 0)
+    assert settings.lighting_follow_dpi is False
+
+
+def test_non_contiguous_stage_mask(fevell_device):
+    # Mask with stages 0, 2, 4 enabled (binary: 00010101 = 0x15, count=3)
+    stages = [400, 800, 1600, 3200, 6400, 12000]
+    fevell_device.set_dpi_configuration(
+        stages=stages,
+        active_stage=2,
+        stage_count=3,
+        enable_mask=0x15,
+    )
+    settings = fevell_device.read_settings()
+    assert settings.stage_enable_mask == 0x15
+    assert settings.stage_count == 3
+    assert len(settings.dpi_stages) == 6
+    assert settings.dpi_stages == stages
+
+
+def test_unplug_detection_poll_input_report(fevell_device, mock_device):
+    assert fevell_device.is_connected is True
+    # Simulate hardware unplug
+    mock_device.close()
+    with pytest.raises(DeviceError):
+        fevell_device.poll_input_report()
+    assert fevell_device.is_connected is False
+
+
