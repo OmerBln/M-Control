@@ -1,5 +1,6 @@
 """Core hardware driver and HID communication controller for Fevell Z1."""
 
+import errno
 import fcntl
 import glob
 import json
@@ -193,7 +194,9 @@ class LinuxHidrawDevice:
                 return list(data)
             except BlockingIOError:
                 return []
-            except OSError:
+            except OSError as exc:
+                if exc.errno in (errno.ENODEV, errno.EIO, errno.ENXIO, errno.EBADF):
+                    raise DeviceError(f"Fare bağlantısı koptu ({self.path})") from exc
                 return []
 
         rlist, _, _ = select.select([self.fd], [], [], timeout_ms / 1000.0)
@@ -202,7 +205,9 @@ class LinuxHidrawDevice:
         try:
             data = os.read(self.fd, max_length)
             return list(data)
-        except OSError:
+        except OSError as exc:
+            if exc.errno in (errno.ENODEV, errno.EIO, errno.ENXIO, errno.EBADF):
+                raise DeviceError(f"Fare bağlantısı koptu ({self.path})") from exc
             return []
 
 
@@ -396,6 +401,7 @@ class FevellDevice(BaseMouseDriver):
         self._receiver_rate_khz: int = 1
         self._live_battery_pct: Optional[int] = None
         self._live_is_charging: Optional[bool] = None
+        self._explicit_profile_path: bool = profile_path is not None
         self._profile_path: Path = profile_path or (
             Path.home() / ".config" / "mcontrol" / "fevell_z1_profile.json"
         )
@@ -409,6 +415,15 @@ class FevellDevice(BaseMouseDriver):
             dpi_stages=[400, 800, 1600, 3200, 6400, 12000],
             dpi_colors=list(DEFAULT_DPI_STAGE_COLORS[:MAX_DPI_STAGES]),
         )
+
+    @property
+    def profile_path(self) -> Path:
+        return self._profile_path
+
+    @profile_path.setter
+    def profile_path(self, val: Path) -> None:
+        self._profile_path = Path(val)
+        self._explicit_profile_path = True
 
     @property
     def is_connected(self) -> bool:
@@ -436,7 +451,7 @@ class FevellDevice(BaseMouseDriver):
         
         # Protocol: GamingMS.exe profile state persistence @ 0x00442f60 (2026-10-29)
         """
-        if not self._is_real_hardware() or not self._profile_path.exists():
+        if not (self._is_real_hardware() or self._explicit_profile_path) or not self._profile_path.exists():
             return
         try:
             data = json.loads(self._profile_path.read_text(encoding="utf-8"))
@@ -456,6 +471,17 @@ class FevellDevice(BaseMouseDriver):
             if enable_mask == 0:
                 enable_mask = (1 << stage_count) - 1
 
+            raw_lcolor = data.get("lighting_color", [0, 255, 0])
+            if isinstance(raw_lcolor, (list, tuple)) and len(raw_lcolor) >= 3:
+                lighting_color = (
+                    int(raw_lcolor[0]) & 0xFF,
+                    int(raw_lcolor[1]) & 0xFF,
+                    int(raw_lcolor[2]) & 0xFF,
+                )
+            else:
+                lighting_color = (0, 255, 0)
+            lighting_follow_dpi = bool(data.get("lighting_follow_dpi", True))
+
             self._cached_settings = MouseSettings(
                 polling_rate=int(data.get("polling_rate", 1000)),
                 debounce_ms=int(data.get("debounce_ms", DEFAULT_DEBOUNCE_MS)),
@@ -473,6 +499,8 @@ class FevellDevice(BaseMouseDriver):
                 lighting_mode=int(data.get("lighting_mode", 1)),
                 lighting_brightness=int(data.get("lighting_brightness", 3)),
                 lighting_speed=int(data.get("lighting_speed", 2)),
+                lighting_color=lighting_color,
+                lighting_follow_dpi=lighting_follow_dpi,
                 button_mappings=list(data.get("button_mappings", DEFAULT_BUTTON_KEYS))[:6],
             )
         except Exception:
@@ -484,7 +512,7 @@ class FevellDevice(BaseMouseDriver):
         
         # Protocol: GamingMS.exe profile state persistence @ 0x00442d10 (2026-10-29)
         """
-        if not self._is_real_hardware():
+        if not (self._is_real_hardware() or self._explicit_profile_path):
             return
         try:
             self._profile_path.parent.mkdir(parents=True, exist_ok=True)
@@ -506,6 +534,8 @@ class FevellDevice(BaseMouseDriver):
                 "lighting_mode": s.lighting_mode,
                 "lighting_brightness": s.lighting_brightness,
                 "lighting_speed": s.lighting_speed,
+                "lighting_color": list(s.lighting_color[:3]),
+                "lighting_follow_dpi": s.lighting_follow_dpi,
                 "button_mappings": list(s.button_mappings[:6]),
             }
             self._profile_path.write_text(
@@ -529,6 +559,8 @@ class FevellDevice(BaseMouseDriver):
             self._dev = hid_device
             self._mode = mode
             self._connected = True
+            if self._explicit_profile_path:
+                self._load_persisted_profile()
             return True
 
         matches = discover_fevell_devices()
@@ -692,17 +724,34 @@ class FevellDevice(BaseMouseDriver):
         """
         self._ensure_connected()
         self._refresh_active_interface()
+
+        if self._is_real_hardware() and self._hidraw_path.startswith("/dev/hidraw"):
+            if not os.path.exists(self._hidraw_path):
+                self.disconnect()
+                raise DeviceError("Fare bağlantısı kesildi.")
+        elif hasattr(self._dev, "is_open") and not getattr(self._dev, "is_open"):
+            self.disconnect()
+            raise DeviceError("Fare bağlantısı kesildi.")
+
         latest_update: Optional[Dict[str, int]] = None
 
         devices_to_poll: List[HIDTransport] = [self._dev]  # type: ignore[list-item]
         for sec_dev, _ in self._secondary_devs:
             devices_to_poll.append(sec_dev)
 
-        for transport in devices_to_poll:
+        for idx, transport in enumerate(devices_to_poll):
             for _ in range(8):
                 try:
                     raw = transport.read(PACKET_LEN_FEATURE_CMD, timeout_ms=0)
+                except DeviceError:
+                    if idx == 0:
+                        self.disconnect()
+                        raise
+                    break
                 except Exception:
+                    if idx == 0 and hasattr(transport, "is_open") and not getattr(transport, "is_open"):
+                        self.disconnect()
+                        raise DeviceError("Fare bağlantısı kesildi.")
                     break
                 if not raw:
                     break
@@ -1318,14 +1367,26 @@ class FevellDevice(BaseMouseDriver):
         brightness: int = 3,
         speed: int = 2,
         color: Tuple[int, int, int] = (255, 0, 0),
+        follow_dpi: Optional[bool] = None,
+        custom_color: Optional[Tuple[int, int, int]] = None,
     ) -> bool:
         """
-        Configure mouse lighting effect mode, brightness, and speed.
+        Configure mouse lighting effect mode, brightness, speed, and color preference.
         # Protocol: GamingMS.exe Feature Report 0x06 Cmd 0x06 @ 0x004369a4..0x00436ad3 (2026-10-29)
         """
         self._cached_settings.lighting_mode = max(0, min(9, mode))
         self._cached_settings.lighting_brightness = max(1, min(4, brightness))
         self._cached_settings.lighting_speed = max(1, min(4, speed))
+        if custom_color is not None:
+            self._cached_settings.lighting_color = (
+                custom_color[0] & 0xFF,
+                custom_color[1] & 0xFF,
+                custom_color[2] & 0xFF,
+            )
+        elif not follow_dpi:
+            self._cached_settings.lighting_color = (color[0] & 0xFF, color[1] & 0xFF, color[2] & 0xFF)
+        if follow_dpi is not None:
+            self._cached_settings.lighting_follow_dpi = bool(follow_dpi)
 
         if self._is_feature_protocol():
             pkt = build_feature_lighting_packet(
@@ -1336,8 +1397,7 @@ class FevellDevice(BaseMouseDriver):
                 color=color,
             )
             self._send_feature_command(pkt)
-            self._save_persisted_profile()
-            return True
+        self._save_persisted_profile()
         return True
 
     def set_button_mappings(self, button_keys: List[str]) -> bool:
@@ -1405,15 +1465,29 @@ class FevellDevice(BaseMouseDriver):
             try:
                 stage_count = self.get_dpi_stage_count()
                 active_stage = self.get_active_dpi_stage()
-                stages = self.get_dpi_stages(count=stage_count)
+                contiguous_mask = (1 << stage_count) - 1
+                cached_mask = self._cached_settings.stage_enable_mask & 0x3F
+                if (
+                    cached_mask
+                    and bin(cached_mask).count("1") == stage_count
+                    and cached_mask != contiguous_mask
+                ):
+                    mask = cached_mask
+                    stages = self.get_dpi_stages(count=MAX_DPI_STAGES)
+                    resolved_active = min(active_stage, MAX_DPI_STAGES - 1)
+                else:
+                    mask = contiguous_mask
+                    stages = self.get_dpi_stages(count=stage_count)
+                    resolved_active = min(active_stage, stage_count - 1)
+
                 colors = [self.get_dpi_color(i) for i in range(MAX_DPI_STAGES)]
                 return MouseSettings(
                     polling_rate=self.get_polling_rate(),
                     debounce_ms=self.get_debounce(),
                     lod=self.get_lod(),
-                    active_stage=min(active_stage, stage_count - 1),
+                    active_stage=resolved_active,
                     stage_count=stage_count,
-                    stage_enable_mask=(1 << stage_count) - 1,
+                    stage_enable_mask=mask,
                     dpi_stages=stages,
                     dpi_colors=colors,
                     angle_snap=self._cached_settings.angle_snap,
@@ -1424,6 +1498,8 @@ class FevellDevice(BaseMouseDriver):
                     lighting_mode=self._cached_settings.lighting_mode,
                     lighting_brightness=self._cached_settings.lighting_brightness,
                     lighting_speed=self._cached_settings.lighting_speed,
+                    lighting_color=self._cached_settings.lighting_color,
+                    lighting_follow_dpi=self._cached_settings.lighting_follow_dpi,
                     button_mappings=list(self._cached_settings.button_mappings),
                 )
             except Exception:
@@ -1447,6 +1523,8 @@ class FevellDevice(BaseMouseDriver):
             lighting_mode=self._cached_settings.lighting_mode,
             lighting_brightness=self._cached_settings.lighting_brightness,
             lighting_speed=self._cached_settings.lighting_speed,
+            lighting_color=self._cached_settings.lighting_color,
+            lighting_follow_dpi=self._cached_settings.lighting_follow_dpi,
             button_mappings=list(self._cached_settings.button_mappings),
         )
 
@@ -1484,6 +1562,9 @@ class FevellDevice(BaseMouseDriver):
             mode=settings.lighting_mode,
             brightness=settings.lighting_brightness,
             speed=settings.lighting_speed,
+            color=settings.lighting_color,
+            follow_dpi=settings.lighting_follow_dpi,
+            custom_color=settings.lighting_color,
         )
         if settings.button_mappings and len(settings.button_mappings) >= 6:
             self.set_button_mappings(settings.button_mappings)
