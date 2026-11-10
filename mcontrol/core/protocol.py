@@ -75,6 +75,8 @@ class MouseSettings:
     lighting_mode: int = 1
     lighting_brightness: int = 3
     lighting_speed: int = 2
+    lighting_color: Tuple[int, int, int] = (0, 255, 0)
+    lighting_follow_dpi: bool = True
     button_mappings: List[str] = field(default_factory=lambda: list(DEFAULT_BUTTON_KEYS))
 
     @property
