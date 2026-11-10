@@ -45,11 +45,7 @@ env/
 htmlcov/
 .tox/
 
-# Local-Only Files (CRITICAL: NEVER COMMIT)
-AGENTS.md
-GEMINI.md
+# Environment
 .env
-*.local.*
 *.local
-plan
-PLAN.md
+*.local.*
