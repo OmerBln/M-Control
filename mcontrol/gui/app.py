@@ -96,6 +96,42 @@ QFrame#StageRowActive {
     border-radius: 8px;
 }
 
+QFrame#StageRowDisabled {
+    background-color: #131622;
+    border: 1px dashed #22273a;
+    border-radius: 8px;
+}
+
+QFrame#SettingSubCard {
+    background-color: #1b1f30;
+    border: 1px solid #262b40;
+    border-radius: 8px;
+}
+
+QFrame#LightingPreviewStrip {
+    background-color: #161a29;
+    border: 1px solid #262b40;
+    border-radius: 6px;
+}
+
+QLabel#CalloutBadge {
+    background-color: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QLabel#CalloutBadgeCustom {
+    background-color: #1d4ed8;
+    color: #ffffff;
+    border: 1px solid #60a5fa;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
 QFrame#BottomBar {
     background-color: #161926;
     border: 1px solid #262b40;
@@ -389,7 +425,36 @@ class MainWindow(QMainWindow):
         header_card.setFixedHeight(68)
         header_layout = QHBoxLayout(header_card)
         header_layout.setContentsMargins(18, 10, 18, 10)
-        header_layout.setSpacing(16)
+        header_layout.setSpacing(14)
+
+        # Brand Logo Badge
+        self.lbl_brand_logo = QLabel()
+        self.lbl_brand_logo.setFixedSize(42, 42)
+        self.lbl_brand_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_loaded = False
+        for logo_name in ("fevell-z1-logo.png", "m-control.png"):
+            logo_path = self._assets_dir / logo_name
+            if logo_path.exists():
+                logo_pix = QPixmap(str(logo_path)).scaled(
+                    36,
+                    36,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                if not logo_pix.isNull():
+                    self.lbl_brand_logo.setPixmap(logo_pix)
+                    self.lbl_brand_logo.setStyleSheet(
+                        "background-color: #111420; border: 1px solid #2e3650; border-radius: 8px;"
+                    )
+                    logo_loaded = True
+                    break
+        if not logo_loaded:
+            self.lbl_brand_logo.setText("Z1")
+            self.lbl_brand_logo.setStyleSheet(
+                "background-color: #1e293b; color: #38bdf8; border: 1px solid #3b82f6; "
+                "border-radius: 8px; font-weight: 800; font-size: 14px;"
+            )
+        header_layout.addWidget(self.lbl_brand_logo)
 
         # Brand & Device Name
         title_col = QVBoxLayout()
@@ -413,6 +478,14 @@ class MainWindow(QMainWindow):
             "border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 700;"
         )
         header_layout.addWidget(self.lbl_active_dpi_display)
+
+        # Secondary Rate & LOD Telemetry Pill in Header
+        self.lbl_active_rate_badge = QLabel("1000 Hz • 1 mm LOD")
+        self.lbl_active_rate_badge.setStyleSheet(
+            "background-color: #111420; color: #cbd5e1; border: 1px solid #2e3650; "
+            "border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600;"
+        )
+        header_layout.addWidget(self.lbl_active_rate_badge)
 
         # Battery Bar
         bat_box = QHBoxLayout()
@@ -517,6 +590,7 @@ class MainWindow(QMainWindow):
         visual_box.setObjectName("MouseVisualBox")
         visual_layout = QVBoxLayout(visual_box)
         visual_layout.setContentsMargins(8, 8, 8, 8)
+        visual_layout.setSpacing(6)
         visual_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.lbl_mouse_image = QLabel()
@@ -525,7 +599,7 @@ class MainWindow(QMainWindow):
         if mouse_img_path.exists():
             pix = QPixmap(str(mouse_img_path)).scaled(
                 185,
-                230,
+                215,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -533,25 +607,51 @@ class MainWindow(QMainWindow):
         else:
             self.lbl_mouse_image.setText("FEVELL Z1")
         visual_layout.addWidget(self.lbl_mouse_image)
+
+        # Live RGB Lighting Status Strip under Mouse Diagram
+        self.lighting_preview_bar = QFrame()
+        self.lighting_preview_bar.setObjectName("LightingPreviewStrip")
+        preview_layout = QHBoxLayout(self.lighting_preview_bar)
+        preview_layout.setContentsMargins(10, 4, 10, 4)
+        preview_layout.setSpacing(8)
+
+        self.lbl_lighting_dot = QLabel()
+        self.lbl_lighting_dot.setFixedSize(10, 10)
+        self.lbl_lighting_dot.setStyleSheet(
+            "background-color: rgb(0, 255, 0); border-radius: 5px; border: 1px solid #cbd5e1;"
+        )
+        self.lbl_lighting_preview = QLabel("RGB: Sabit Renk (DPI Rengi)")
+        self.lbl_lighting_preview.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+        preview_layout.addWidget(self.lbl_lighting_dot)
+        preview_layout.addWidget(self.lbl_lighting_preview, stretch=1)
+        visual_layout.addWidget(self.lighting_preview_bar)
+
         left_layout.addWidget(visual_box)
 
         # 6 Button Assignment Combos matching callouts 1..6 on the mouse image
         btn_grid = QGridLayout()
-        btn_grid.setHorizontalSpacing(10)
+        btn_grid.setHorizontalSpacing(8)
         btn_grid.setVerticalSpacing(6)
 
         button_labels = [
-            "1. Sol Tık",
-            "2. Sağ Tık",
-            "3. Orta Tık",
-            "4. İleri Tuşu",
-            "5. Geri Tuşu",
-            "6. DPI Tuşu",
+            "Sol Tık",
+            "Sağ Tık",
+            "Orta Tık",
+            "İleri Tuşu",
+            "Geri Tuşu",
+            "DPI Tuşu",
         ]
+        self.button_badges: List[QLabel] = []
+        self.button_row_labels: List[QLabel] = []
         self.button_combos: List[QComboBox] = []
         action_items = [(key, label) for key, (label, _) in BUTTON_ACTIONS.items()]
 
         for idx, text in enumerate(button_labels):
+            badge = QLabel(str(idx + 1))
+            badge.setObjectName("CalloutBadge")
+            badge.setFixedSize(20, 20)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
             lbl = QLabel(text)
             lbl.setStyleSheet("color: #cbd5e1; font-size: 12px; font-weight: 600;")
             combo = QComboBox()
@@ -564,11 +664,14 @@ class MainWindow(QMainWindow):
             combo.currentIndexChanged.connect(
                 lambda _c_idx, b_idx=idx: self._on_button_mapping_changed(b_idx)
             )
+            self.button_badges.append(badge)
+            self.button_row_labels.append(lbl)
             self.button_combos.append(combo)
-            btn_grid.addWidget(lbl, idx, 0)
-            btn_grid.addWidget(combo, idx, 1)
+            btn_grid.addWidget(badge, idx, 0)
+            btn_grid.addWidget(lbl, idx, 1)
+            btn_grid.addWidget(combo, idx, 2)
 
-        btn_grid.setColumnStretch(1, 1)
+        btn_grid.setColumnStretch(2, 1)
         left_layout.addLayout(btn_grid)
 
         self.btn_reset_keys = QPushButton("Tuşları Varsayılana Sıfırla")
@@ -803,24 +906,48 @@ class MainWindow(QMainWindow):
         # PAW3395 Hardware Feature Checkboxes (Cmd 0x08)
         lbl_adv_hdr = QLabel("Gelişmiş PAW3395 Sensör Algoritmaları")
         lbl_adv_hdr.setFont(QFont("Inter", 12, QFont.Weight.Bold))
-        lbl_adv_hdr.setStyleSheet("color: #93c5fd; margin-top: 6px;")
+        lbl_adv_hdr.setStyleSheet("color: #93c5fd; margin-top: 4px;")
         sensor_layout.addWidget(lbl_adv_hdr)
 
-        self.chk_motion_sync = QCheckBox("Motion Sync (Sensör ve USB paketlerini senkronize et — Önerilen)")
+        self.chk_motion_sync = QCheckBox("Motion Sync (Önerilen)")
         self.chk_motion_sync.setChecked(True)
         self.chk_motion_sync.toggled.connect(self._on_sensor_advanced_changed)
 
-        self.chk_angle_snap = QCheckBox("Angle Snapping / Açı Düzeltme (Doğrusal çizim düzleştirme)")
+        self.chk_angle_snap = QCheckBox("Angle Snapping (Açı Düzeltme)")
         self.chk_angle_snap.setChecked(False)
         self.chk_angle_snap.toggled.connect(self._on_sensor_advanced_changed)
 
-        self.chk_ripple_control = QCheckBox("Ripple Control / Dalgalanma Önleme (Yüksek DPI yumuşatma)")
+        self.chk_ripple_control = QCheckBox("Ripple Control (Dalgalanma Önleme)")
         self.chk_ripple_control.setChecked(False)
         self.chk_ripple_control.toggled.connect(self._on_sensor_advanced_changed)
 
-        sensor_layout.addWidget(self.chk_motion_sync)
-        sensor_layout.addWidget(self.chk_angle_snap)
-        sensor_layout.addWidget(self.chk_ripple_control)
+        sensor_feature_cards = [
+            (
+                self.chk_motion_sync,
+                "Sensör okuma anlarını USB yoklama (polling) paketleriyle senkronize ederek daha tutarlı izleme sağlar.",
+            ),
+            (
+                self.chk_angle_snap,
+                "Yatay ve dikey eksendeki küçük sapmaları düzleştirir (rekabetçi FPS oyunlarında kapalı tutulması önerilir).",
+            ),
+            (
+                self.chk_ripple_control,
+                "Çok yüksek DPI kademelerinde oluşan mikro titreşimleri (jitter) yumuşatır.",
+            ),
+        ]
+        for chk_widget, desc_text in sensor_feature_cards:
+            sub_card = QFrame()
+            sub_card.setObjectName("SettingSubCard")
+            sub_layout = QVBoxLayout(sub_card)
+            sub_layout.setContentsMargins(12, 8, 12, 8)
+            sub_layout.setSpacing(3)
+            lbl_desc = QLabel(desc_text)
+            lbl_desc.setWordWrap(True)
+            lbl_desc.setStyleSheet("color: #94a3b8; font-size: 11px;")
+            sub_layout.addWidget(chk_widget)
+            sub_layout.addWidget(lbl_desc)
+            sensor_layout.addWidget(sub_card)
+
         sensor_layout.addStretch()
 
         root_layout.addWidget(sensor_card, stretch=1)
@@ -1137,6 +1264,9 @@ class MainWindow(QMainWindow):
         if not checked and self.stage_radios[stage_idx].isChecked():
             self.stage_radios[enabled_indices[0]].setChecked(True)
 
+        self._update_stage_row_styles()
+        self._update_active_dpi_banner()
+
         if self.chk_live_apply.isChecked() and self.device.is_connected:
             self._push_dpi_to_hardware()
 
@@ -1335,6 +1465,26 @@ class MainWindow(QMainWindow):
             "border: 2px solid #cbd5e1; border-radius: 12px; padding: 0px;"
         )
 
+        if hasattr(self, "lbl_lighting_dot") and hasattr(self, "lbl_lighting_preview"):
+            mode_names = {0: "Kapalı", 1: "Sabit Renk", 2: "Nefes Alma", 3: "Gökkuşağı Dalga"}
+            m_text = mode_names.get(mode, "Özel")
+            if is_off:
+                self.lbl_lighting_dot.setStyleSheet(
+                    "background-color: #475569; border-radius: 5px; border: 1px solid #334155;"
+                )
+                self.lbl_lighting_preview.setText("RGB: Kapalı")
+            elif is_rainbow:
+                self.lbl_lighting_dot.setStyleSheet(
+                    "background-color: #ec4899; border-radius: 5px; border: 1px solid #f472b6;"
+                )
+                self.lbl_lighting_preview.setText("RGB: Gökkuşağı Dalga (Dinamik)")
+            else:
+                self.lbl_lighting_dot.setStyleSheet(
+                    f"background-color: rgb({r}, {g}, {b}); border-radius: 5px; border: 1px solid #cbd5e1;"
+                )
+                source_txt = "DPI Rengi" if self.chk_lighting_follow_dpi.isChecked() else "Özel Renk"
+                self.lbl_lighting_preview.setText(f"RGB: {m_text} ({source_txt})")
+
     def _on_lighting_changed(self, *_args) -> None:
         if self._syncing_ui:
             return
@@ -1356,6 +1506,8 @@ class MainWindow(QMainWindow):
                     brightness=light_bright,
                     speed=light_speed,
                     color=color,
+                    follow_dpi=self.chk_lighting_follow_dpi.isChecked(),
+                    custom_color=self._lighting_color,
                 )
                 self._lighting_dirty = False
                 self.lbl_status.setText("RGB aydınlatma efekti güncellendi.")
@@ -1370,6 +1522,7 @@ class MainWindow(QMainWindow):
                 c_idx = combo.findData(default_key)
                 if c_idx >= 0:
                     combo.setCurrentIndex(c_idx)
+            self._update_button_row_highlights()
         finally:
             self._syncing_ui = False
 
@@ -1448,6 +1601,7 @@ class MainWindow(QMainWindow):
             self.lbl_status.setText("Güvenlik: En az bir tuş 'Sol Tık' olarak atanmış olmalıdır.")
             return
 
+        self._update_button_row_highlights()
         self._buttons_dirty = True
         if self.chk_live_apply.isChecked() and self.device.is_connected:
             try:
@@ -1458,6 +1612,18 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
+    def _update_button_row_highlights(self) -> None:
+        if not hasattr(self, "button_badges") or not hasattr(self, "button_combos"):
+            return
+        for i, (badge, combo) in enumerate(zip(self.button_badges, self.button_combos)):
+            current_action = combo.currentData() or DEFAULT_BUTTON_KEYS[i]
+            is_custom = (current_action != DEFAULT_BUTTON_KEYS[i])
+            target_obj = "CalloutBadgeCustom" if is_custom else "CalloutBadge"
+            if badge.objectName() != target_obj:
+                badge.setObjectName(target_obj)
+                badge.style().unpolish(badge)
+                badge.style().polish(badge)
+
     def _on_live_control_edited(self, *args) -> None:
         if self._syncing_ui:
             return
@@ -1465,7 +1631,31 @@ class MainWindow(QMainWindow):
     def _update_stage_row_styles(self) -> None:
         active_idx = self.get_selected_stage_index()
         for idx, card in enumerate(self.stage_cards):
-            target_name = "StageRowActive" if idx == active_idx else "StageRow"
+            is_enabled = self.stage_checks[idx].isChecked()
+            is_active = (idx == active_idx)
+
+            # Dim/enable row controls according to enabled state
+            self.stage_sliders[idx].setEnabled(is_enabled)
+            self.stage_spinboxes[idx].setEnabled(is_enabled)
+            self.stage_color_btns[idx].setEnabled(is_enabled)
+
+            if not is_enabled:
+                target_name = "StageRowDisabled"
+                card.setStyleSheet(
+                    "QFrame#StageRowDisabled { background-color: #131622; border: 1px dashed #22273a; border-radius: 8px; }"
+                )
+            elif is_active:
+                target_name = "StageRowActive"
+                r, g, b = self._stage_colors[active_idx]
+                card.setStyleSheet(
+                    f"QFrame#StageRowActive {{ background-color: #1f2742; border: 2px solid rgb({r}, {g}, {b}); border-radius: 8px; }}"
+                )
+            else:
+                target_name = "StageRow"
+                card.setStyleSheet(
+                    "QFrame#StageRow { background-color: #1b1f30; border: 1px solid #2a3048; border-radius: 8px; }"
+                )
+
             if card.objectName() != target_name:
                 card.setObjectName(target_name)
                 card.style().unpolish(card)
@@ -1474,7 +1664,16 @@ class MainWindow(QMainWindow):
     def _update_active_dpi_banner(self) -> None:
         active_idx = self.get_selected_stage_index()
         active_dpi = self.stage_spinboxes[active_idx].value()
+        r, g, b = self._stage_colors[active_idx]
         self.lbl_active_dpi_display.setText(f"{active_dpi} DPI ({active_idx + 1}. Kademe)")
+        self.lbl_active_dpi_display.setStyleSheet(
+            f"background-color: #1e293b; color: rgb({r}, {g}, {b}); border: 1px solid rgb({r}, {g}, {b}); "
+            "border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 700;"
+        )
+        if hasattr(self, "lbl_active_rate_badge") and hasattr(self, "combo_rate") and hasattr(self, "combo_lod"):
+            rate_txt = self.combo_rate.currentText().split()[0] if self.combo_rate.currentText() else "1000"
+            lod_txt = "1 mm" if self.combo_lod.currentIndex() == 0 else "2 mm"
+            self.lbl_active_rate_badge.setText(f"{rate_txt} Hz • {lod_txt} LOD")
 
     def get_selected_stage_index(self) -> int:
         for i, radio in enumerate(self.stage_radios):
@@ -1548,6 +1747,12 @@ class MainWindow(QMainWindow):
         self._auto_reconnect_counter = 0
         try:
             update = self.device.poll_input_report()
+        except DeviceError:
+            self.lbl_conn_mode.setText("○ Bağlı Değil")
+            self.lbl_conn_mode.setStyleSheet("color: #f87171; font-size: 12px; font-weight: 700;")
+            self._update_battery_display(0, is_charging=False)
+            self.lbl_status.setText("Fare bağlantısı kesildi. Yeniden bağlanması bekleniyor...")
+            return
         except Exception:
             return
 
@@ -1595,8 +1800,13 @@ class MainWindow(QMainWindow):
             if not self.device.is_connected:
                 self.device.connect()
 
-            mode_str = "Kablolu USB" if self.device.mode == "wired" else "2.4GHz Kablosuz (Dongle)"
-            self.lbl_conn_mode.setText(f"Bağlı ({mode_str})")
+            if self.device.mode == "wired":
+                mode_str = "Kablolu USB"
+            elif self.device.mode == "dongle_4k":
+                mode_str = "4K/8K Kablosuz Alıcı"
+            else:
+                mode_str = "2.4GHz Kablosuz (Dongle)"
+            self.lbl_conn_mode.setText(f"● Bağlı ({mode_str})")
             self.lbl_conn_mode.setStyleSheet("color: #34d399; font-size: 12px; font-weight: 700;")
 
             bat = self.device.read_battery()
@@ -1658,6 +1868,8 @@ class MainWindow(QMainWindow):
                 )
                 speed_names = {1: "1 (Yavaş)", 2: "2 (Normal)", 3: "3 (Hızlı)", 4: "4 (Çok Hızlı)"}
                 self.lbl_speed_val.setText(speed_names.get(settings.lighting_speed, str(settings.lighting_speed)))
+                self._lighting_color = settings.lighting_color
+                self.chk_lighting_follow_dpi.setChecked(settings.lighting_follow_dpi)
                 self._update_lighting_controls_state()
 
                 if settings.button_mappings:
@@ -1666,6 +1878,7 @@ class MainWindow(QMainWindow):
                         if c_idx >= 0:
                             self.button_combos[i].setCurrentIndex(c_idx)
                     self._last_applied_buttons = list(settings.button_mappings[:6])
+                self._update_button_row_highlights()
                 self._buttons_dirty = False
                 self._lighting_dirty = False
                 self._colors_dirty = False
@@ -1677,7 +1890,7 @@ class MainWindow(QMainWindow):
             self.btn_apply.setEnabled(True)
 
         except DeviceError as exc:
-            self.lbl_conn_mode.setText("Bağlı Değil")
+            self.lbl_conn_mode.setText("○ Bağlı Değil")
             self.lbl_conn_mode.setStyleSheet("color: #f87171; font-size: 12px; font-weight: 700;")
             self._update_battery_display(0, is_charging=False)
             self.lbl_status.setText(str(exc))
@@ -1777,6 +1990,8 @@ class MainWindow(QMainWindow):
                 brightness=light_bright,
                 speed=light_speed,
                 color=light_color,
+                follow_dpi=self.chk_lighting_follow_dpi.isChecked(),
+                custom_color=self._lighting_color,
             )
             self._lighting_dirty = False
 
@@ -1790,16 +2005,6 @@ class MainWindow(QMainWindow):
             self._refresh_diagnostics_labels()
             self.lbl_status.setText(
                 f"Ayarlar başarıyla kaydedildi: {active_dpi} DPI (Kademe {active_idx + 1}), {rate_hz} Hz, {lod_mm} mm LOD"
-            )
-            QMessageBox.information(
-                self,
-                "Ayarlar Kaydedildi",
-                f"Yeni ayarlar Fevell Z1 fareye başarıyla aktarıldı!\n\n"
-                f"• Aktif DPI: {active_dpi} DPI ({active_idx + 1}. Kademe)\n"
-                f"• Yoklama Oranı: {rate_hz} Hz\n"
-                f"• Kalkış Mesafesi (LOD): {lod_mm} mm\n"
-                f"• Tuş Gecikmesi (Debounce): {debounce_ms} ms\n"
-                f"• Motion Sync: {'Açık' if self.chk_motion_sync.isChecked() else 'Kapalı'}",
             )
         except Exception as exc:
             self.lbl_status.setText(f"Hata: {exc}")
